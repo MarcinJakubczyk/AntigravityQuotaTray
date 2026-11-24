@@ -359,11 +359,11 @@
                     </Grid>
 
                     <!-- Gemini 5h -->
-                    <Grid Margin="0,0,0,3">
-                        <TextBlock x:Name="Gemini5hLabel" Text="5-hour limit" Foreground="#D4D4D8" FontSize="11.5" />
-                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                            <TextBlock x:Name="Gemini5hResetText" Text="-" Foreground="#A1A1AA" FontSize="11" Margin="0,0,8,0" VerticalAlignment="Center" />
-                            <TextBlock x:Name="Gemini5hPctText" Text="--" Foreground="#22C55E" FontSize="12" FontWeight="Bold" />
+                    <Grid Margin="0,0,0,4">
+                        <TextBlock x:Name="Gemini5hLabel" Text="5-hour limit" Foreground="#D4D4D8" FontSize="11.5" VerticalAlignment="Center" />
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                            <ui:ResetProgressPill x:Name="Gemini5hResetPill" Margin="0,0,7,0" VerticalAlignment="Center" />
+                            <TextBlock x:Name="Gemini5hPctText" Text="--" Foreground="#22C55E" FontSize="12" FontWeight="Bold" VerticalAlignment="Center" />
                         </StackPanel>
                     </Grid>
                     <Grid Height="7" Margin="0,0,0,8">
@@ -372,11 +372,11 @@
                     </Grid>
 
                     <!-- Gemini Weekly -->
-                    <Grid Margin="0,0,0,3">
-                        <TextBlock x:Name="GeminiWeeklyLabel" Text="Weekly limit" Foreground="#D4D4D8" FontSize="11.5" />
-                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                            <TextBlock x:Name="GeminiWeeklyResetText" Text="-" Foreground="#A1A1AA" FontSize="11" Margin="0,0,8,0" VerticalAlignment="Center" />
-                            <TextBlock x:Name="GeminiWeeklyPctText" Text="--" Foreground="#22C55E" FontSize="12" FontWeight="Bold" />
+                    <Grid Margin="0,0,0,4">
+                        <TextBlock x:Name="GeminiWeeklyLabel" Text="Weekly limit" Foreground="#D4D4D8" FontSize="11.5" VerticalAlignment="Center" />
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                            <ui:ResetProgressPill x:Name="GeminiWeeklyResetPill" Margin="0,0,7,0" VerticalAlignment="Center" />
+                            <TextBlock x:Name="GeminiWeeklyPctText" Text="--" Foreground="#22C55E" FontSize="12" FontWeight="Bold" VerticalAlignment="Center" />
                         </StackPanel>
                     </Grid>
                     <Grid Height="7">
@@ -392,11 +392,11 @@
                     <TextBlock Text="Claude &amp; GPT Models" Foreground="#F4F4F5" FontSize="12.5" FontWeight="SemiBold" Margin="0,0,0,7" />
 
                     <!-- Claude 5h -->
-                    <Grid Margin="0,0,0,3">
-                        <TextBlock x:Name="Claude5hLabel" Text="5-hour limit" Foreground="#D4D4D8" FontSize="11.5" />
-                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                            <TextBlock x:Name="Claude5hResetText" Text="-" Foreground="#A1A1AA" FontSize="11" Margin="0,0,8,0" VerticalAlignment="Center" />
-                            <TextBlock x:Name="Claude5hPctText" Text="--" Foreground="#A1A1AA" FontSize="12" FontWeight="Bold" />
+                    <Grid Margin="0,0,0,4">
+                        <TextBlock x:Name="Claude5hLabel" Text="5-hour limit" Foreground="#D4D4D8" FontSize="11.5" VerticalAlignment="Center" />
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                            <ui:ResetProgressPill x:Name="Claude5hResetPill" Margin="0,0,7,0" VerticalAlignment="Center" />
+                            <TextBlock x:Name="Claude5hPctText" Text="--" Foreground="#A1A1AA" FontSize="12" FontWeight="Bold" VerticalAlignment="Center" />
                         </StackPanel>
                     </Grid>
                     <Grid Height="7" Margin="0,0,0,8">
@@ -405,11 +405,11 @@
                     </Grid>
 
                     <!-- Claude Weekly -->
-                    <Grid Margin="0,0,0,3">
-                        <TextBlock x:Name="ClaudeWeeklyLabel" Text="Weekly limit" Foreground="#D4D4D8" FontSize="11.5" />
-                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                            <TextBlock x:Name="ClaudeWeeklyResetText" Text="-" Foreground="#A1A1AA" FontSize="11" Margin="0,0,8,0" VerticalAlignment="Center" />
-                            <TextBlock x:Name="ClaudeWeeklyPctText" Text="--" Foreground="#A1A1AA" FontSize="12" FontWeight="Bold" />
+                    <Grid Margin="0,0,0,4">
+                        <TextBlock x:Name="ClaudeWeeklyLabel" Text="Weekly limit" Foreground="#D4D4D8" FontSize="11.5" VerticalAlignment="Center" />
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                            <ui:ResetProgressPill x:Name="ClaudeWeeklyResetPill" Margin="0,0,7,0" VerticalAlignment="Center" />
+                            <TextBlock x:Name="ClaudeWeeklyPctText" Text="--" Foreground="#A1A1AA" FontSize="12" FontWeight="Bold" VerticalAlignment="Center" />
                         </StackPanel>
                     </Grid>
                     <Grid Height="7">

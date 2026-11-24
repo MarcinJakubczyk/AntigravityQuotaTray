@@ -7,15 +7,21 @@ using AntigravityQuotaTray.Models;
 
 namespace AntigravityQuotaTray.Services;
 
-public sealed class AgyQuotaFetcher
+public sealed class AgyQuotaFetcher : IDisposable
 {
     private readonly int _timeoutSeconds;
     private readonly AppLogger? _logger;
+    private readonly HiddenProcessRunner _processRunner = new();
 
     public AgyQuotaFetcher(int timeoutSeconds = 15, AppLogger? logger = null)
     {
         _timeoutSeconds = Math.Max(5, timeoutSeconds);
         _logger = logger;
+    }
+
+    public void Dispose()
+    {
+        _processRunner.Dispose();
     }
 
     public static string? ResolveAgyPath()
@@ -286,55 +292,17 @@ public sealed class AgyQuotaFetcher
         return null;
     }
 
-    private async Task<(int ExitCode, string Stdout, string Stderr)> RunAgyCommandAsync(
+    private Task<(int ExitCode, string Stdout, string Stderr)> RunAgyCommandAsync(
         string agyPath,
         string slashCommand,
         CancellationToken cancellationToken)
     {
-        var psi = new ProcessStartInfo
-        {
-            FileName = agyPath,
-            Arguments = $"-p \"{slashCommand}\" --output-format json --print-timeout {_timeoutSeconds}s",
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            StandardOutputEncoding = Encoding.UTF8,
-            StandardErrorEncoding = Encoding.UTF8
-        };
-
-        using var process = new Process { StartInfo = psi };
-        process.Start();
-
-        var stdoutTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
-        var stderrTask = process.StandardError.ReadToEndAsync(cancellationToken);
-
-        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeoutCts.CancelAfter(TimeSpan.FromSeconds(_timeoutSeconds + 5));
-
-        try
-        {
-            await process.WaitForExitAsync(timeoutCts.Token).ConfigureAwait(false);
-        }
-        catch (OperationCanceledException)
-        {
-            try
-            {
-                if (!process.HasExited)
-                {
-                    process.Kill(entireProcessTree: true);
-                }
-            }
-            catch
-            {
-                // Ignore kill errors
-            }
-
-            throw;
-        }
-
-        var stdout = await stdoutTask.ConfigureAwait(false);
-        var stderr = await stderrTask.ConfigureAwait(false);
-        return (process.ExitCode, stdout, stderr);
+        var arguments = $"-p \"{slashCommand}\" --output-format json --print-timeout {_timeoutSeconds}s";
+        return _processRunner.RunAsync(
+            agyPath,
+            arguments,
+            Path.GetTempPath(),
+            TimeSpan.FromSeconds(_timeoutSeconds + 5),
+            cancellationToken);
     }
 }

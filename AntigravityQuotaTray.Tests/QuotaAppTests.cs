@@ -261,6 +261,105 @@ public sealed class QuotaAppTests : IDisposable
         Assert.Equal("teraz", dueBucket.FormatResetIn(now, AppLanguage.Pl));
     }
 
+    [Fact]
+    public void QuotaBucket_GetResetProgressFraction_CalculatesRisingProgressCorrectly()
+    {
+        var now = DateTimeOffset.Parse("2026-11-24T12:00:00Z");
+
+        var half5h = new QuotaBucket("Gemini Models", "5h", "5h", 0.5, 50, QuotaStatus.Ok, now.AddHours(2.5));
+        Assert.Equal(0.5, half5h.GetResetProgressFraction(now)!.Value, precision: 3);
+
+        var near5h = new QuotaBucket("Gemini Models", "5h", "5h", 0.1, 10, QuotaStatus.Low, now.AddMinutes(30));
+        Assert.Equal(0.9, near5h.GetResetProgressFraction(now)!.Value, precision: 3);
+
+        var due5h = new QuotaBucket("Gemini Models", "5h", "5h", 0.0, 0, QuotaStatus.Low, now.AddSeconds(-10));
+        Assert.Equal(1.0, due5h.GetResetProgressFraction(now)!.Value, precision: 3);
+
+        var clampedLow5h = new QuotaBucket("Gemini Models", "5h", "5h", 1.0, 100, QuotaStatus.Ok, now.AddHours(6));
+        Assert.Equal(0.0, clampedLow5h.GetResetProgressFraction(now)!.Value, precision: 3);
+
+        var halfWeekly = new QuotaBucket("Gemini Models", "weekly", "weekly", 0.5, 50, QuotaStatus.Ok, now.AddDays(3.5));
+        Assert.Equal(0.5, halfWeekly.GetResetProgressFraction(now)!.Value, precision: 3);
+
+        var noReset = new QuotaBucket("Gemini Models", "5h", "5h", 0.5, 50, QuotaStatus.Ok, DateTimeOffset.MinValue);
+        Assert.Null(noReset.GetResetProgressFraction(now));
+
+        var unknownWindow = new QuotaBucket("Gemini Models", "daily", "daily", 0.5, 50, QuotaStatus.Ok, now.AddHours(1));
+        Assert.Null(unknownWindow.GetResetProgressFraction(now));
+    }
+
+    [Fact]
+    public async Task HiddenProcessRunner_RunsSubprocessAndCapturesOutput()
+    {
+        using var runner = new HiddenProcessRunner();
+        var cmdPath = Path.Combine(Environment.SystemDirectory, "cmd.exe");
+
+        var (exitCode, stdout, stderr) = await runner.RunAsync(
+            cmdPath,
+            "/c echo hidden-ok",
+            _tempDir,
+            TimeSpan.FromSeconds(10));
+
+        Assert.Equal(0, exitCode);
+        Assert.Contains("hidden-ok", stdout);
+        Assert.True(string.IsNullOrWhiteSpace(stderr));
+    }
+
+    [Fact]
+    public async Task HiddenProcessRunner_SupportsParallelRunsWithoutHandleLeaks()
+    {
+        using var runner = new HiddenProcessRunner();
+        var cmdPath = Path.Combine(Environment.SystemDirectory, "cmd.exe");
+
+        var t1 = runner.RunAsync(cmdPath, "/c echo first-run", _tempDir, TimeSpan.FromSeconds(10));
+        var t2 = runner.RunAsync(cmdPath, "/c echo second-run", _tempDir, TimeSpan.FromSeconds(10));
+
+        var results = await Task.WhenAll(t1, t2);
+        Assert.Equal(0, results[0].ExitCode);
+        Assert.Contains("first-run", results[0].Stdout);
+        Assert.Equal(0, results[1].ExitCode);
+        Assert.Contains("second-run", results[1].Stdout);
+    }
+
+    [Fact]
+    public void DarkMenuRenderer_SelectedMenuItem_RendersDarkHoverHighlight()
+    {
+        var renderer = new TrayManager.DarkMenuRenderer();
+        using var menu = new System.Windows.Forms.ContextMenuStrip
+        {
+            Renderer = renderer,
+            BackColor = TrayManager.DarkMenuRenderer.BgColor,
+            ForeColor = TrayManager.DarkMenuRenderer.TextColor,
+            ShowImageMargin = false
+        };
+
+        var hoveredItem = new System.Windows.Forms.ToolStripMenuItem("Refresh now");
+        var normalItem = new System.Windows.Forms.ToolStripMenuItem("Exit");
+        menu.Items.Add(hoveredItem);
+        menu.Items.Add(normalItem);
+        hoveredItem.Select();
+
+        using var hoveredBmp = new System.Drawing.Bitmap(Math.Max(180, hoveredItem.Width), Math.Max(26, hoveredItem.Height));
+        using (var g = System.Drawing.Graphics.FromImage(hoveredBmp))
+        {
+            hoveredItem.Size = hoveredBmp.Size;
+            renderer.DrawMenuItemBackground(new System.Windows.Forms.ToolStripItemRenderEventArgs(g, hoveredItem));
+        }
+
+        var hoveredPixel = hoveredBmp.GetPixel(hoveredBmp.Width / 2, hoveredBmp.Height / 2);
+        Assert.Equal(TrayManager.DarkMenuRenderer.HoverColor.ToArgb(), hoveredPixel.ToArgb());
+
+        using var normalBmp = new System.Drawing.Bitmap(Math.Max(180, normalItem.Width), Math.Max(26, normalItem.Height));
+        using (var g = System.Drawing.Graphics.FromImage(normalBmp))
+        {
+            normalItem.Size = normalBmp.Size;
+            renderer.DrawMenuItemBackground(new System.Windows.Forms.ToolStripItemRenderEventArgs(g, normalItem));
+        }
+
+        var normalPixel = normalBmp.GetPixel(normalBmp.Width / 2, normalBmp.Height / 2);
+        Assert.Equal(TrayManager.DarkMenuRenderer.BgColor.ToArgb(), normalPixel.ToArgb());
+    }
+
     private static QuotaSnapshot CreateSnapshot(
         DateTimeOffset ts,
         int g5,

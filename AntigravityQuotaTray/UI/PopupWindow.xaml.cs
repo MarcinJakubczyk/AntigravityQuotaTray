@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Threading;
 using AntigravityQuotaTray.Models;
 using AntigravityQuotaTray.Services;
 
@@ -24,6 +25,7 @@ public partial class PopupWindow : Window
     private AppSettings _settings;
     private QuotaSnapshot? _snapshot;
     private IReadOnlyList<HistoryPoint> _historyPoints = [];
+    private readonly DispatcherTimer _countdownTimer;
     private bool _isLoading;
     private bool _suppressSettingEvents;
 
@@ -42,6 +44,14 @@ public partial class PopupWindow : Window
         _settings = initialSettings;
         ApplySettingsToControls(initialSettings);
         SizeChanged += OnPopupSizeChanged;
+
+        _countdownTimer = new DispatcherTimer
+        {
+            Interval = TimeSpan.FromSeconds(30)
+        };
+        _countdownTimer.Tick += (_, _) => RefreshBucketsDisplay();
+        IsVisibleChanged += OnPopupIsVisibleChanged;
+        Closed += (_, _) => _countdownTimer.Stop();
     }
 
     public void UpdateMaxHeightForWorkArea(double workHeightDip)
@@ -160,12 +170,8 @@ public partial class PopupWindow : Window
             ErrorBanner.Visibility = Visibility.Collapsed;
         }
 
-        var nowUtc = DateTimeOffset.UtcNow;
         var strings = AppStrings.For(_settings.Language);
-        ApplyBucket(snapshot?.Gemini5h, Gemini5hPctText, Gemini5hResetText, Gemini5hBarFill, nowUtc, _settings.Language, strings);
-        ApplyBucket(snapshot?.GeminiWeekly, GeminiWeeklyPctText, GeminiWeeklyResetText, GeminiWeeklyBarFill, nowUtc, _settings.Language, strings);
-        ApplyBucket(snapshot?.Claude5h, Claude5hPctText, Claude5hResetText, Claude5hBarFill, nowUtc, _settings.Language, strings);
-        ApplyBucket(snapshot?.ClaudeWeekly, ClaudeWeeklyPctText, ClaudeWeeklyResetText, ClaudeWeeklyBarFill, nowUtc, _settings.Language, strings);
+        RefreshBucketsDisplay();
 
         if (snapshot?.RemainingCredits is int credits)
         {
@@ -315,10 +321,36 @@ public partial class PopupWindow : Window
         }
     }
 
+    private void OnPopupIsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
+    {
+        if (IsVisible)
+        {
+            RefreshBucketsDisplay();
+            if (!_countdownTimer.IsEnabled)
+            {
+                _countdownTimer.Start();
+            }
+        }
+        else
+        {
+            _countdownTimer.Stop();
+        }
+    }
+
+    private void RefreshBucketsDisplay()
+    {
+        var nowUtc = DateTimeOffset.UtcNow;
+        var strings = AppStrings.For(_settings.Language);
+        ApplyBucket(_snapshot?.Gemini5h, Gemini5hPctText, Gemini5hResetPill, Gemini5hBarFill, nowUtc, _settings.Language, strings);
+        ApplyBucket(_snapshot?.GeminiWeekly, GeminiWeeklyPctText, GeminiWeeklyResetPill, GeminiWeeklyBarFill, nowUtc, _settings.Language, strings);
+        ApplyBucket(_snapshot?.Claude5h, Claude5hPctText, Claude5hResetPill, Claude5hBarFill, nowUtc, _settings.Language, strings);
+        ApplyBucket(_snapshot?.ClaudeWeekly, ClaudeWeeklyPctText, ClaudeWeeklyResetPill, ClaudeWeeklyBarFill, nowUtc, _settings.Language, strings);
+    }
+
     private static void ApplyBucket(
         QuotaBucket? bucket,
         TextBlock pctText,
-        TextBlock resetText,
+        ResetProgressPill resetPill,
         Border barFill,
         DateTimeOffset nowUtc,
         AppLanguage language,
@@ -328,7 +360,7 @@ public partial class PopupWindow : Window
         {
             pctText.Text = "--";
             pctText.Foreground = UnknownBrush;
-            resetText.Text = "-";
+            resetPill.SetState("-", null, null);
             barFill.Width = 0;
             barFill.Background = UnknownBrush;
             return;
@@ -337,11 +369,33 @@ public partial class PopupWindow : Window
         var brush = BrushForStatus(bucket.Status);
         pctText.Text = $"{bucket.RemainingPercent}%";
         pctText.Foreground = brush;
-        resetText.Text = string.Format(
+
+        var resetIn = bucket.FormatResetIn(nowUtc, language);
+        var label = string.Format(
             CultureInfo.InvariantCulture,
             strings.ResetFormat,
             bucket.ResetLocalText,
-            bucket.FormatResetIn(nowUtc, language));
+            resetIn);
+        var progress = bucket.GetResetProgressFraction(nowUtc);
+        string? tooltip = null;
+        if (progress is double p)
+        {
+            if (bucket.ResetUtc <= nowUtc)
+            {
+                tooltip = strings.ResetDueTooltip;
+            }
+            else
+            {
+                var pct = (int)Math.Round(p * 100.0, MidpointRounding.AwayFromZero);
+                tooltip = string.Format(
+                    CultureInfo.InvariantCulture,
+                    strings.ResetProgressTooltipFormat,
+                    pct,
+                    resetIn);
+            }
+        }
+
+        resetPill.SetState(label, progress, tooltip);
         barFill.Background = brush;
         barFill.Width = Math.Max(0, ProgressTrackWidth * (Math.Clamp(bucket.RemainingPercent, 0, 100) / 100.0));
     }

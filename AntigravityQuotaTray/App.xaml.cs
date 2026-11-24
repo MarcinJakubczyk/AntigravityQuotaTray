@@ -266,6 +266,7 @@ public partial class App : Application
     {
         _logger?.Info("Shutdown requested by user.");
         _pollTimer?.Stop();
+        _fetcher?.Dispose();
         _trayManager?.Dispose();
         _popup?.Close();
         Shutdown();
@@ -275,6 +276,7 @@ public partial class App : Application
     {
         _logger?.Info($"Application exiting (code={e.ApplicationExitCode}, ownsMutex={_ownsMutex}).");
         _pollTimer?.Stop();
+        _fetcher?.Dispose();
         _trayManager?.Dispose();
         if (_ownsMutex)
         {

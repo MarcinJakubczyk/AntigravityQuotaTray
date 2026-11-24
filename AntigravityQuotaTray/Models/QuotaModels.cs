@@ -74,6 +74,43 @@ public sealed record QuotaBucket(
 
         return $"{Math.Max(1, delta.Minutes)}m";
     }
+
+    public TimeSpan? GetWindowDuration()
+    {
+        if (Window.Equals("5h", StringComparison.OrdinalIgnoreCase))
+        {
+            return TimeSpan.FromHours(5);
+        }
+
+        if (Window.Equals("weekly", StringComparison.OrdinalIgnoreCase))
+        {
+            return TimeSpan.FromDays(7);
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Returns rising progress toward reset in range [0.0, 1.0]:
+    /// 0.0 at window start, 1.0 when reset is due. Returns null if reset or window is unknown.
+    /// </summary>
+    public double? GetResetProgressFraction(DateTimeOffset nowUtc)
+    {
+        if (ResetUtc == DateTimeOffset.MinValue)
+        {
+            return null;
+        }
+
+        var duration = GetWindowDuration();
+        if (duration is null || duration.Value.TotalSeconds <= 0)
+        {
+            return null;
+        }
+
+        var remainingSeconds = (ResetUtc.ToUniversalTime() - nowUtc.ToUniversalTime()).TotalSeconds;
+        var elapsedFraction = 1.0 - (remainingSeconds / duration.Value.TotalSeconds);
+        return Math.Clamp(elapsedFraction, 0.0, 1.0);
+    }
 }
 
 public sealed record QuotaSnapshot(
