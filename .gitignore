@@ -1,0 +1,22 @@
+# Build & publish artifacts
+bin/
+obj/
+publish/
+
+# IDE & user-specific files
+.vs/
+.idea/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Debug symbols & logs
+*.pdb
+*.log
+*.log.*
+
+# OS metadata
+Thumbs.db
+Desktop.ini
+.DS_Store
