@@ -360,6 +360,7 @@ public partial class PopupWindow : Window
         {
             pctText.Text = "--";
             pctText.Foreground = UnknownBrush;
+            resetPill.Visibility = Visibility.Visible;
             resetPill.SetState("-", null, null);
             barFill.Width = 0;
             barFill.Background = UnknownBrush;
@@ -370,32 +371,41 @@ public partial class PopupWindow : Window
         pctText.Text = $"{bucket.RemainingPercent}%";
         pctText.Foreground = brush;
 
-        var resetIn = bucket.FormatResetIn(nowUtc, language);
-        var label = string.Format(
-            CultureInfo.InvariantCulture,
-            strings.ResetFormat,
-            bucket.ResetLocalText,
-            resetIn);
-        var progress = bucket.GetResetProgressFraction(nowUtc);
-        string? tooltip = null;
-        if (progress is double p)
+        if (!bucket.HasResetTime)
         {
-            if (bucket.ResetUtc <= nowUtc)
-            {
-                tooltip = strings.ResetDueTooltip;
-            }
-            else
-            {
-                var pct = (int)Math.Round(p * 100.0, MidpointRounding.AwayFromZero);
-                tooltip = string.Format(
-                    CultureInfo.InvariantCulture,
-                    strings.ResetProgressTooltipFormat,
-                    pct,
-                    resetIn);
-            }
+            resetPill.Visibility = Visibility.Collapsed;
+            resetPill.SetState(string.Empty, null, null);
         }
+        else
+        {
+            resetPill.Visibility = Visibility.Visible;
+            var resetIn = bucket.FormatResetIn(nowUtc, language);
+            var label = string.Format(
+                CultureInfo.InvariantCulture,
+                strings.ResetFormat,
+                bucket.ResetLocalText,
+                resetIn);
+            var progress = bucket.GetResetProgressFraction(nowUtc);
+            string? tooltip = null;
+            if (progress is double p)
+            {
+                if (bucket.ResetUtc <= nowUtc)
+                {
+                    tooltip = strings.ResetDueTooltip;
+                }
+                else
+                {
+                    var pct = (int)Math.Round(p * 100.0, MidpointRounding.AwayFromZero);
+                    tooltip = string.Format(
+                        CultureInfo.InvariantCulture,
+                        strings.ResetProgressTooltipFormat,
+                        pct,
+                        resetIn);
+                }
+            }
 
-        resetPill.SetState(label, progress, tooltip);
+            resetPill.SetState(label, progress, tooltip);
+        }
         barFill.Background = brush;
         barFill.Width = Math.Max(0, ProgressTrackWidth * (Math.Clamp(bucket.RemainingPercent, 0, 100) / 100.0));
     }

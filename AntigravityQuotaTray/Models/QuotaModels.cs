@@ -32,11 +32,13 @@ public sealed record QuotaBucket(
     QuotaStatus Status,
     DateTimeOffset ResetUtc)
 {
+    public bool HasResetTime => ResetUtc > DateTimeOffset.UnixEpoch;
+
     public string ResetLocalText
     {
         get
         {
-            if (ResetUtc == DateTimeOffset.MinValue)
+            if (!HasResetTime)
             {
                 return "-";
             }
@@ -51,7 +53,7 @@ public sealed record QuotaBucket(
 
     public string FormatResetIn(DateTimeOffset nowUtc, AppLanguage language = AppLanguage.En)
     {
-        if (ResetUtc == DateTimeOffset.MinValue)
+        if (!HasResetTime)
         {
             return "-";
         }
@@ -96,7 +98,7 @@ public sealed record QuotaBucket(
     /// </summary>
     public double? GetResetProgressFraction(DateTimeOffset nowUtc)
     {
-        if (ResetUtc == DateTimeOffset.MinValue)
+        if (!HasResetTime)
         {
             return null;
         }

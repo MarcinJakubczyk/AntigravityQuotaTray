@@ -282,7 +282,16 @@ public sealed class QuotaAppTests : IDisposable
         Assert.Equal(0.5, halfWeekly.GetResetProgressFraction(now)!.Value, precision: 3);
 
         var noReset = new QuotaBucket("Gemini Models", "5h", "5h", 0.5, 50, QuotaStatus.Ok, DateTimeOffset.MinValue);
+        Assert.False(noReset.HasResetTime);
+        Assert.Equal("-", noReset.ResetLocalText);
+        Assert.Equal("-", noReset.FormatResetIn(now, AppLanguage.Pl));
         Assert.Null(noReset.GetResetProgressFraction(now));
+
+        var epochReset = new QuotaBucket("Gemini Models", "5h", "5h", 1.0, 100, QuotaStatus.Ok, DateTimeOffset.UnixEpoch);
+        Assert.False(epochReset.HasResetTime);
+        Assert.Equal("-", epochReset.ResetLocalText);
+        Assert.Equal("-", epochReset.FormatResetIn(now, AppLanguage.Pl));
+        Assert.Null(epochReset.GetResetProgressFraction(now));
 
         var unknownWindow = new QuotaBucket("Gemini Models", "daily", "daily", 0.5, 50, QuotaStatus.Ok, now.AddHours(1));
         Assert.Null(unknownWindow.GetResetProgressFraction(now));
