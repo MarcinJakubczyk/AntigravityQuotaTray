@@ -7,21 +7,15 @@ using AntigravityQuotaTray.Models;
 
 namespace AntigravityQuotaTray.Services;
 
-public sealed class AgyQuotaFetcher : IDisposable
+public sealed class AgyQuotaFetcher
 {
     private readonly int _timeoutSeconds;
     private readonly AppLogger? _logger;
-    private readonly HiddenProcessRunner _processRunner = new();
 
     public AgyQuotaFetcher(int timeoutSeconds = 15, AppLogger? logger = null)
     {
         _timeoutSeconds = Math.Max(5, timeoutSeconds);
         _logger = logger;
-    }
-
-    public void Dispose()
-    {
-        _processRunner.Dispose();
     }
 
     public static string? ResolveAgyPath()
@@ -292,13 +286,80 @@ public sealed class AgyQuotaFetcher : IDisposable
         return null;
     }
 
+    /// <summary>
+    /// Runs a console command silently in the background without creating a visible window.
+    /// </summary>
+    public static async Task<(int ExitCode, string Stdout, string Stderr)> RunProcessAsync(
+        string fileName,
+        string arguments,
+        string? workingDirectory,
+        TimeSpan timeout,
+        CancellationToken cancellationToken = default)
+    {
+        var workDir = string.IsNullOrWhiteSpace(workingDirectory)
+            ? Path.GetTempPath()
+            : workingDirectory;
+
+        var psi = new ProcessStartInfo
+        {
+            FileName = fileName,
+            Arguments = arguments,
+            WorkingDirectory = workDir,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            WindowStyle = ProcessWindowStyle.Hidden,
+            RedirectStandardInput = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            StandardOutputEncoding = Encoding.UTF8,
+            StandardErrorEncoding = Encoding.UTF8
+        };
+
+        using var process = new Process { StartInfo = psi };
+        process.Start();
+        process.StandardInput.Close();
+
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeoutCts.CancelAfter(timeout);
+
+        var stdoutTask = process.StandardOutput.ReadToEndAsync(timeoutCts.Token);
+        var stderrTask = process.StandardError.ReadToEndAsync(timeoutCts.Token);
+
+        try
+        {
+            await process.WaitForExitAsync(timeoutCts.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            try
+            {
+                if (!process.HasExited)
+                {
+                    process.Kill(entireProcessTree: true);
+                }
+            }
+            catch
+            {
+                // Ignore kill errors
+            }
+
+            _ = stdoutTask.ContinueWith(_ => { }, TaskContinuationOptions.OnlyOnFaulted);
+            _ = stderrTask.ContinueWith(_ => { }, TaskContinuationOptions.OnlyOnFaulted);
+            throw;
+        }
+
+        var stdout = await stdoutTask.ConfigureAwait(false);
+        var stderr = await stderrTask.ConfigureAwait(false);
+        return (process.ExitCode, stdout, stderr);
+    }
+
     private Task<(int ExitCode, string Stdout, string Stderr)> RunAgyCommandAsync(
         string agyPath,
         string slashCommand,
         CancellationToken cancellationToken)
     {
         var arguments = $"-p \"{slashCommand}\" --output-format json --print-timeout {_timeoutSeconds}s";
-        return _processRunner.RunAsync(
+        return RunProcessAsync(
             agyPath,
             arguments,
             Path.GetTempPath(),

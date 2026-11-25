@@ -298,12 +298,11 @@ public sealed class QuotaAppTests : IDisposable
     }
 
     [Fact]
-    public async Task HiddenProcessRunner_RunsSubprocessAndCapturesOutput()
+    public async Task RunProcessAsync_RunsSubprocessSilentlyAndCapturesOutput()
     {
-        using var runner = new HiddenProcessRunner();
         var cmdPath = Path.Combine(Environment.SystemDirectory, "cmd.exe");
 
-        var (exitCode, stdout, stderr) = await runner.RunAsync(
+        var (exitCode, stdout, stderr) = await AgyQuotaFetcher.RunProcessAsync(
             cmdPath,
             "/c echo hidden-ok",
             _tempDir,
@@ -315,13 +314,12 @@ public sealed class QuotaAppTests : IDisposable
     }
 
     [Fact]
-    public async Task HiddenProcessRunner_SupportsParallelRunsWithoutHandleLeaks()
+    public async Task RunProcessAsync_SupportsParallelRuns()
     {
-        using var runner = new HiddenProcessRunner();
         var cmdPath = Path.Combine(Environment.SystemDirectory, "cmd.exe");
 
-        var t1 = runner.RunAsync(cmdPath, "/c echo first-run", _tempDir, TimeSpan.FromSeconds(10));
-        var t2 = runner.RunAsync(cmdPath, "/c echo second-run", _tempDir, TimeSpan.FromSeconds(10));
+        var t1 = AgyQuotaFetcher.RunProcessAsync(cmdPath, "/c echo first-run", _tempDir, TimeSpan.FromSeconds(10));
+        var t2 = AgyQuotaFetcher.RunProcessAsync(cmdPath, "/c echo second-run", _tempDir, TimeSpan.FromSeconds(10));
 
         var results = await Task.WhenAll(t1, t2);
         Assert.Equal(0, results[0].ExitCode);
