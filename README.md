@@ -10,6 +10,10 @@ A lightweight, native Windows system tray application (**.NET 8 WPF + System Tra
   <img src="docs/tray.png" alt="AntigravityQuotaTray system tray icon" />
 </p>
 
+<p align="center">
+  <img src="docs/tray-number.png" alt="AntigravityQuotaTray system tray icon (5h number + weekly bar)" />
+</p>
+
 ## Features
 
 - **System Tray Icon (Gemini Models)**
