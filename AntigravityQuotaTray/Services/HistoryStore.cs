@@ -24,7 +24,7 @@ public sealed class HistoryStore
         FilePath = Path.Combine(DirectoryPath, "history.jsonl");
     }
 
-    public void Append(QuotaSnapshot snapshot)
+    public void Append(QuotaSnapshot snapshot, string? activeModelsSummary = null)
     {
         if (snapshot.Gemini5h is null && snapshot.GeminiWeekly is null)
         {
@@ -37,7 +37,8 @@ public sealed class HistoryStore
             snapshot.GeminiWeekly?.RemainingPercent,
             snapshot.Claude5h?.RemainingPercent,
             snapshot.ClaudeWeekly?.RemainingPercent,
-            snapshot.RemainingCredits);
+            snapshot.RemainingCredits,
+            string.IsNullOrWhiteSpace(activeModelsSummary) ? null : activeModelsSummary);
 
         var line = JsonSerializer.Serialize(point, JsonOptions);
 

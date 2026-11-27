@@ -25,6 +25,7 @@ public partial class PopupWindow : Window
     private AppSettings _settings;
     private QuotaSnapshot? _snapshot;
     private IReadOnlyList<HistoryPoint> _historyPoints = [];
+    private IReadOnlyList<ModelUsageEvent> _modelEvents = [];
     private readonly DispatcherTimer _countdownTimer;
     private bool _isLoading;
     private bool _suppressSettingEvents;
@@ -35,6 +36,7 @@ public partial class PopupWindow : Window
     public event Action? RefreshRequested;
     public event Action<AppSettings>? SettingsChanged;
     public event Action<int>? ChartRangeChanged;
+    public event Action<bool>? PinChanged;
     public event Action? OpenDataFolderRequested;
     public event Action? ExitRequested;
 
@@ -42,6 +44,7 @@ public partial class PopupWindow : Window
     {
         InitializeComponent();
         _settings = initialSettings;
+        HistoryChart.ModelBreakdownToggled += _ => RebuildChartLegend(_settings.Language, _settings.ShowClaudeOnChart);
         ApplySettingsToControls(initialSettings);
         SizeChanged += OnPopupSizeChanged;
 
@@ -138,10 +141,16 @@ public partial class PopupWindow : Window
 
     public void SetPinned(bool pinned)
     {
+        var changed = IsPinned != pinned;
         IsPinned = pinned;
         PinButton.Background = pinned
             ? CreateFrozen(Color.FromRgb(37, 99, 235))
             : CreateFrozen(Color.FromRgb(39, 39, 42));
+
+        if (changed)
+        {
+            PinChanged?.Invoke(pinned);
+        }
     }
 
     public void SetLoading(bool isLoading)
@@ -151,10 +160,15 @@ public partial class PopupWindow : Window
         UpdateHeaderStatus();
     }
 
-    public void UpdateView(QuotaSnapshot? snapshot, IReadOnlyList<HistoryPoint> historyPoints, AppSettings settings)
+    public void UpdateView(
+        QuotaSnapshot? snapshot,
+        IReadOnlyList<HistoryPoint> historyPoints,
+        AppSettings settings,
+        IReadOnlyList<ModelUsageEvent>? modelEvents = null)
     {
         _snapshot = snapshot;
         _historyPoints = historyPoints;
+        _modelEvents = modelEvents ?? [];
         _settings = settings;
 
         ApplySettingsToControls(settings);
@@ -197,13 +211,84 @@ public partial class PopupWindow : Window
             UseAiCreditsText.Foreground = InactiveRangeFg;
         }
 
-        HistoryChart.SetData(_historyPoints, _settings.ChartRangeHours, _settings.ShowClaudeOnChart, _settings.Language);
+        HistoryChart.SetData(_historyPoints, _settings.ChartRangeHours, _settings.ShowClaudeOnChart, _settings.Language, _modelEvents);
+        RebuildChartLegend(_settings.Language, _settings.ShowClaudeOnChart);
     }
 
-    public void UpdateChartOnly(IReadOnlyList<HistoryPoint> historyPoints, int rangeHours, bool showClaude, AppLanguage language = AppLanguage.En)
+    public void UpdateChartOnly(
+        IReadOnlyList<HistoryPoint> historyPoints,
+        int rangeHours,
+        bool showClaude,
+        AppLanguage language = AppLanguage.En,
+        IReadOnlyList<ModelUsageEvent>? modelEvents = null)
     {
         _historyPoints = historyPoints;
-        HistoryChart.SetData(historyPoints, rangeHours, showClaude, language);
+        _modelEvents = modelEvents ?? [];
+        HistoryChart.SetData(historyPoints, rangeHours, showClaude, language, _modelEvents);
+        RebuildChartLegend(language, showClaude);
+    }
+
+    private void RebuildChartLegend(AppLanguage language, bool showClaude)
+    {
+        ChartLegendPanel.Children.Clear();
+        var s = AppStrings.For(language);
+
+        if (HistoryChart.ShowModelBreakdownOnChart && _modelEvents.Count > 0)
+        {
+            var totals = new Dictionary<string, double>(StringComparer.Ordinal);
+            foreach (var ev in _modelEvents)
+            {
+                totals[ev.FamilyKey] = totals.TryGetValue(ev.FamilyKey, out var cur)
+                    ? cur + ev.WeightedTokens
+                    : ev.WeightedTokens;
+            }
+
+            var ordered = new List<KeyValuePair<string, double>>(totals);
+            ordered.Sort((a, b) => b.Value.CompareTo(a.Value));
+
+            var count = Math.Min(5, ordered.Count);
+            for (var i = 0; i < count; i++)
+            {
+                var familyKey = ordered[i].Key;
+                var rgb = ModelNameFormatter.GetFamilyRgb(familyKey);
+                AddLegendItem(Color.FromRgb(rgb.R, rgb.G, rgb.B), ModelNameFormatter.GetFamilyDisplayName(familyKey));
+            }
+        }
+        else
+        {
+            AddLegendItem(Color.FromRgb(56, 189, 248), "Gemini 5h");
+        }
+
+        AddLegendItem(Color.FromRgb(52, 211, 153), s.LegendGeminiWeekly);
+
+        if (showClaude)
+        {
+            AddLegendItem(Color.FromRgb(245, 158, 11), "Claude 5h");
+        }
+    }
+
+    private void AddLegendItem(Color dotColor, string label)
+    {
+        var item = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Margin = new Thickness(0, 0, 11, 2)
+        };
+        item.Children.Add(new System.Windows.Shapes.Ellipse
+        {
+            Width = 7,
+            Height = 7,
+            Fill = CreateFrozen(dotColor),
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 0, 4, 0)
+        });
+        item.Children.Add(new TextBlock
+        {
+            Text = label,
+            Foreground = InactiveRangeFg,
+            FontSize = 10.5
+        });
+        ChartLegendPanel.Children.Add(item);
     }
 
     private void UpdateHeaderStatus()
@@ -248,7 +333,7 @@ public partial class PopupWindow : Window
             OpenOnHoverCheck.IsChecked = settings.OpenOnHover;
             AutostartCheck.IsChecked = settings.AutostartEnabled;
             ShowClaudeCheck.IsChecked = settings.ShowClaudeOnChart;
-            ClaudeLegendItem.Visibility = settings.ShowClaudeOnChart ? Visibility.Visible : Visibility.Collapsed;
+            RebuildChartLegend(settings.Language, settings.ShowClaudeOnChart);
             UpdateRangeButtons(settings.ChartRangeHours);
         }
         finally
@@ -272,7 +357,7 @@ public partial class PopupWindow : Window
         ClaudeWeeklyLabel.Text = s.LimitWeeklyLabel;
         CreditsLabelText.Text = s.PrepaidCreditsLabel;
         HistoryTitleText.Text = s.HistoryTitle;
-        LegendGeminiWeeklyText.Text = s.LegendGeminiWeekly;
+        HistoryTitleText.ToolTip = s.ChartToggleModelsTooltip;
 
         SettingsTitleText.Text = s.SettingsTitle;
         LanguageLabelText.Text = s.LanguageLabel;
@@ -471,9 +556,9 @@ public partial class PopupWindow : Window
     {
         if (_suppressSettingEvents) return;
         _settings.ShowClaudeOnChart = ShowClaudeCheck.IsChecked == true;
-        ClaudeLegendItem.Visibility = _settings.ShowClaudeOnChart ? Visibility.Visible : Visibility.Collapsed;
+        RebuildChartLegend(_settings.Language, _settings.ShowClaudeOnChart);
         SettingsChanged?.Invoke(_settings);
-        HistoryChart.SetData(_historyPoints, _settings.ChartRangeHours, _settings.ShowClaudeOnChart, _settings.Language);
+        HistoryChart.SetData(_historyPoints, _settings.ChartRangeHours, _settings.ShowClaudeOnChart, _settings.Language, _modelEvents);
     }
 
     private void OnLanguageChanged(object sender, SelectionChangedEventArgs e)
@@ -483,7 +568,7 @@ public partial class PopupWindow : Window
             Enum.TryParse<AppLanguage>(cbi.Tag?.ToString(), out var language))
         {
             _settings.Language = language;
-            UpdateView(_snapshot, _historyPoints, _settings);
+            UpdateView(_snapshot, _historyPoints, _settings, _modelEvents);
             SettingsChanged?.Invoke(_settings);
         }
     }

@@ -452,16 +452,7 @@
 
                     <ui:HistoryChartControl x:Name="HistoryChart" Height="132" />
 
-                    <StackPanel Orientation="Horizontal" Margin="2,6,0,0">
-                        <Ellipse Width="7" Height="7" Fill="#38BDF8" VerticalAlignment="Center" Margin="0,0,4,0" />
-                        <TextBlock Text="Gemini 5h" Foreground="#A1A1AA" FontSize="10.5" Margin="0,0,12,0" />
-                        <Ellipse Width="7" Height="7" Fill="#34D399" VerticalAlignment="Center" Margin="0,0,4,0" />
-                        <TextBlock x:Name="LegendGeminiWeeklyText" Text="Gemini Weekly" Foreground="#A1A1AA" FontSize="10.5" Margin="0,0,12,0" />
-                        <StackPanel x:Name="ClaudeLegendItem" Orientation="Horizontal" Visibility="Collapsed">
-                            <Ellipse Width="7" Height="7" Fill="#F59E0B" VerticalAlignment="Center" Margin="0,0,4,0" />
-                            <TextBlock Text="Claude 5h" Foreground="#A1A1AA" FontSize="10.5" />
-                        </StackPanel>
-                    </StackPanel>
+                    <WrapPanel x:Name="ChartLegendPanel" Margin="2,6,0,0" />
                 </StackPanel>
             </Border>
 

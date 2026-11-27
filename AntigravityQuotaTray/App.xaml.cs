@@ -17,15 +17,19 @@ public partial class App : Application
     private AppLogger? _logger;
     private SettingsStore? _settingsStore;
     private HistoryStore? _historyStore;
+    private ModelActivityTracker? _modelActivityTracker;
     private AutostartManager? _autostartManager;
     private AgyQuotaFetcher? _fetcher;
     private PopupWindow? _popup;
     private TrayManager? _trayManager;
     private DispatcherTimer? _pollTimer;
 
+    internal static readonly TimeSpan AutoRefreshCooldown = TimeSpan.FromSeconds(15);
+
     private AppSettings _settings = new();
     private QuotaSnapshot? _latestSnapshot;
     private bool _isFetching;
+    private DateTimeOffset _lastRefreshUtc = DateTimeOffset.MinValue;
     private DateTimeOffset _lastPruneUtc = DateTimeOffset.MinValue;
 
     protected override void OnStartup(StartupEventArgs e)
@@ -49,6 +53,7 @@ public partial class App : Application
         {
             _settingsStore = new SettingsStore();
             _historyStore = new HistoryStore();
+            _modelActivityTracker = new ModelActivityTracker(logger: _logger);
             _autostartManager = new AutostartManager();
             _fetcher = new AgyQuotaFetcher(logger: _logger);
 
@@ -78,7 +83,8 @@ public partial class App : Application
             WireEvents();
 
             var initialHistory = _historyStore.LoadRange(TimeSpan.FromHours(_settings.ChartRangeHours));
-            _popup.UpdateView(null, initialHistory, _settings);
+            var initialModelEvents = _modelActivityTracker.LoadEvents(TimeSpan.FromHours(_settings.ChartRangeHours));
+            _popup.UpdateView(null, initialHistory, _settings, initialModelEvents);
 
             _pollTimer = new DispatcherTimer
             {
@@ -131,9 +137,21 @@ public partial class App : Application
         _popup.ExitRequested += ShutdownApp;
 
         _trayManager.RefreshRequested += async () => await RefreshQuotaAsync();
+        _trayManager.PopupOpening += OnPopupOpening;
         _trayManager.AutostartToggledFromMenu += OnAutostartToggledFromMenu;
         _trayManager.OpenDataFolderRequested += OpenDataFolder;
         _trayManager.ExitRequested += ShutdownApp;
+    }
+
+    internal static bool ShouldAutoRefreshOnPopupOpen(bool isFetching, DateTimeOffset lastRefreshUtc, DateTimeOffset nowUtc) =>
+        !isFetching && (nowUtc - lastRefreshUtc) >= AutoRefreshCooldown;
+
+    private void OnPopupOpening()
+    {
+        if (ShouldAutoRefreshOnPopupOpen(_isFetching, _lastRefreshUtc, DateTimeOffset.UtcNow))
+        {
+            _ = RefreshQuotaAsync();
+        }
     }
 
     private async Task RefreshQuotaAsync()
@@ -149,11 +167,21 @@ public partial class App : Application
         try
         {
             var fresh = await _fetcher.FetchAsync(_settings.Language);
+            var pollWindow = TimeSpan.FromMinutes(Math.Max(2, _settings.PollIntervalMinutes + 1));
+            var chartWindow = TimeSpan.FromHours(_settings.ChartRangeHours);
+            var fetchWindow = chartWindow > pollWindow ? chartWindow : pollWindow;
+            var modelEvents = _modelActivityTracker is not null
+                ? await Task.Run(() => _modelActivityTracker.LoadEvents(fetchWindow))
+                : [];
 
             if (string.IsNullOrWhiteSpace(fresh.ErrorMessage))
             {
                 _latestSnapshot = fresh;
-                _historyStore.Append(fresh);
+                _lastRefreshUtc = DateTimeOffset.UtcNow;
+                var windowStart = fresh.TimestampUtc - pollWindow;
+                var activeShares = ModelActivityTracker.SummarizeWindow(modelEvents, windowStart, fresh.TimestampUtc);
+                var modelsSummary = ModelActivityTracker.FormatCompactSummary(activeShares);
+                _historyStore.Append(fresh, modelsSummary);
                 _logger?.Info(
                     $"Quota updated: Gemini 5h={fresh.Gemini5h?.RemainingPercent.ToString() ?? "--"}%, " +
                     $"Gemini W={fresh.GeminiWeekly?.RemainingPercent.ToString() ?? "--"}%, " +
@@ -183,8 +211,8 @@ public partial class App : Application
                 _latestSnapshot = fresh;
             }
 
-            var history = _historyStore.LoadRange(TimeSpan.FromHours(_settings.ChartRangeHours));
-            _popup.UpdateView(_latestSnapshot, history, _settings);
+            var history = _historyStore.LoadRange(chartWindow);
+            _popup.UpdateView(_latestSnapshot, history, _settings, modelEvents);
             _trayManager.UpdateDisplay(_latestSnapshot, _settings);
         }
         catch (Exception ex)
@@ -195,6 +223,11 @@ public partial class App : Application
         {
             _isFetching = false;
             _popup.SetLoading(false);
+            if (_pollTimer is not null && _pollTimer.IsEnabled)
+            {
+                _pollTimer.Stop();
+                _pollTimer.Start();
+            }
         }
     }
 
@@ -230,20 +263,33 @@ public partial class App : Application
         OnSettingsChanged(_settings);
         if (_popup is not null && _historyStore is not null)
         {
-            var history = _historyStore.LoadRange(TimeSpan.FromHours(_settings.ChartRangeHours));
-            _popup.UpdateView(_latestSnapshot, history, _settings);
+            var window = TimeSpan.FromHours(_settings.ChartRangeHours);
+            var history = _historyStore.LoadRange(window);
+            var modelEvents = _modelActivityTracker?.LoadEvents(window) ?? [];
+            _popup.UpdateView(_latestSnapshot, history, _settings, modelEvents);
         }
     }
 
-    private void OnChartRangeChanged(int hours)
+    private async void OnChartRangeChanged(int hours)
     {
         if (_historyStore is null || _popup is null)
         {
             return;
         }
 
-        var history = _historyStore.LoadRange(TimeSpan.FromHours(hours));
-        _popup.UpdateChartOnly(history, hours, _settings.ShowClaudeOnChart, _settings.Language);
+        try
+        {
+            var window = TimeSpan.FromHours(hours);
+            var history = _historyStore.LoadRange(window);
+            var modelEvents = _modelActivityTracker is not null
+                ? await Task.Run(() => _modelActivityTracker.LoadEvents(window))
+                : [];
+            _popup.UpdateChartOnly(history, hours, _settings.ShowClaudeOnChart, _settings.Language, modelEvents);
+        }
+        catch (Exception ex)
+        {
+            _logger?.Warn($"Failed to update chart range to {hours}h.", ex);
+        }
     }
 
     private void OpenDataFolder()

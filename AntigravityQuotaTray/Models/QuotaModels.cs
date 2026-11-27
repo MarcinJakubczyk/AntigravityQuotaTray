@@ -142,7 +142,9 @@ public sealed record HistoryPoint(
     int? Gw,
     int? C5,
     int? Cw,
-    int? Cr);
+    int? Cr,
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    string? Models = null);
 
 public sealed class AppSettings
 {

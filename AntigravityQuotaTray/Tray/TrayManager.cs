@@ -1,6 +1,7 @@
 using System.Drawing;
 using System.Windows;
 using System.Windows.Forms;
+using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Threading;
 using AntigravityQuotaTray.Models;
@@ -28,9 +29,12 @@ public sealed class TrayManager : IDisposable
     private bool _disposed;
 
     public event Action? RefreshRequested;
+    public event Action? PopupOpening;
     public event Action<bool>? AutostartToggledFromMenu;
     public event Action? OpenDataFolderRequested;
     public event Action? ExitRequested;
+
+    internal bool IsHoverWatchActive => _hoverWatchTimer.IsEnabled;
 
     public TrayManager(PopupWindow popup, AppSettings initialSettings)
     {
@@ -92,6 +96,8 @@ public sealed class TrayManager : IDisposable
 
         _hoverWatchTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(120) };
         _hoverWatchTimer.Tick += OnHoverWatchTick;
+
+        _popup.PinChanged += OnPopupPinChanged;
     }
 
     public void UpdateDisplay(QuotaSnapshot? snapshot, AppSettings settings)
@@ -180,6 +186,7 @@ public sealed class TrayManager : IDisposable
 
         if (_popup.IsPinned || _popup.IsSettingsOpen)
         {
+            _lastInsideHoverAreaUtc = DateTime.UtcNow;
             return;
         }
 
@@ -225,9 +232,9 @@ public sealed class TrayManager : IDisposable
     {
         if (_popup.IsVisible && _popup.IsPinned)
         {
-            _popup.SetPinned(false);
             _hoverWatchTimer.Stop();
             _popup.Hide();
+            _popup.SetPinned(false);
             return;
         }
 
@@ -241,6 +248,7 @@ public sealed class TrayManager : IDisposable
 
     private void ShowPopupAtAnchor(NativeMethods.POINT anchorPx, bool pinned, bool activate)
     {
+        var wasHidden = !_popup.IsVisible;
         _popup.SetPinned(pinned);
 
         if (!_popup.IsVisible)
@@ -300,6 +308,35 @@ public sealed class TrayManager : IDisposable
         {
             _popup.Activate();
         }
+
+        if (!pinned)
+        {
+            EnsureHoverWatchStarted();
+        }
+
+        if (wasHidden)
+        {
+            PopupOpening?.Invoke();
+        }
+    }
+
+    private void OnPopupPinChanged(bool isPinned)
+    {
+        if (isPinned || !_popup.IsVisible)
+        {
+            return;
+        }
+
+        EnsureHoverWatchStarted();
+    }
+
+    private void EnsureHoverWatchStarted()
+    {
+        _lastInsideHoverAreaUtc = DateTime.UtcNow;
+        if (!_hoverWatchTimer.IsEnabled)
+        {
+            _hoverWatchTimer.Start();
+        }
     }
 
     private bool IsPointInsidePopup(NativeMethods.POINT pt)
@@ -312,6 +349,19 @@ public sealed class TrayManager : IDisposable
         var dpi = VisualTreeHelper.GetDpi(_popup);
         var scaleX = dpi.DpiScaleX > 0 ? dpi.DpiScaleX : 1.0;
         var scaleY = dpi.DpiScaleY > 0 ? dpi.DpiScaleY : 1.0;
+
+        var hwnd = new WindowInteropHelper(_popup).Handle;
+        if (hwnd != IntPtr.Zero && NativeMethods.GetWindowRect(hwnd, out var rect))
+        {
+            var padX = (int)Math.Round(8 * scaleX);
+            var padTop = (int)Math.Round(8 * scaleY);
+            var padBottom = (int)Math.Round(24 * scaleY); // bridge gap down to taskbar
+
+            return pt.X >= rect.Left - padX
+                && pt.X <= rect.Right + padX
+                && pt.Y >= rect.Top - padTop
+                && pt.Y <= rect.Bottom + padBottom;
+        }
 
         var x = pt.X / scaleX;
         var y = pt.Y / scaleY;
@@ -339,6 +389,7 @@ public sealed class TrayManager : IDisposable
         }
 
         _disposed = true;
+        _popup.PinChanged -= OnPopupPinChanged;
         _hoverOpenTimer.Stop();
         _hoverWatchTimer.Stop();
         _notifyIcon.Visible = false;
